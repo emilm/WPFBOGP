@@ -1,10 +1,10 @@
 <?php 
 /*
-Plugin Name:    WP Facebook Open Graph protocol
+Plugin Name:    WP Facebook Open Graph protocol with Scrape Update
 Plugin URI:     http://wordpress.org/plugins/wp-facebook-open-graph-protocol/
 Description:    Adds proper Facebook Open Graph Meta tags and values to your site so when links are shared it looks awesome! Works on Google + and Linkedin too!
-Version: 		2.0.11
-Author: 		Chuck Reynolds
+Version: 		2.0.11-scrabable
+Author: 		Chuck Reynolds / Emil Melar
 Author URI: 	http://chuckreynolds.us
 License:		GPLv2 or later
 License URI: 	http://www.gnu.org/licenses/gpl-2.0.html
@@ -25,7 +25,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 */
 
-define('WPFBOGP_VERSION', '2.0.11');
+define('WPFBOGP_VERSION', '2.0.11-scrabable');
 wpfbogp_admin_warnings();
 
 // add OGP namespace per ogp.me schema
@@ -161,36 +161,47 @@ function wpfbogp_build_head() {
 		
 		// Find/output any images for use in the OGP tags
 		$wpfbogp_images = array();
+   
 		
 		// Only find images if it isn't the homepage and the fallback isn't being forced
-		if ( ! is_home() && $options['wpfbogp_force_fallback'] != 1 ) {
-			// Find featured thumbnail of the current post/page
-			if ( function_exists( 'has_post_thumbnail' ) && has_post_thumbnail( $post->ID ) ) {
+		if ( ! is_home() && $options['wpfbogp_force_fallback'] != 1 ) {    
+       
+    $external_image_url = get_post_meta( $post->ID, '_nelioefi_url', true );
+      
+    if ( $external_image_url && strlen( $external_image_url ) > 0 )
+    {
+      $wpfbogp_images[] = $external_image_url;
+    }
+    else if ( function_exists( 'has_post_thumbnail' ) && has_post_thumbnail( $post->ID ) ) { // Find featured thumbnail of the current post/page
 				$thumbnail_src = wp_get_attachment_image_src( get_post_thumbnail_id( $post->ID ), 'large' );
 				$link = $thumbnail_src[0];
  				if ( ! preg_match( '/^https?:\/\//', $link ) ) {
  					// Remove any starting slash with ltrim() and add one to the end of site_url()
 					$link = site_url( '/' ) . ltrim( $link, '/' );
 				}
-				$wpfbogp_images[] = $link; // Add to images array
-			}
+				$wpfbogp_images[] = $link; // Add to images array        
+        
+			}      
 			
 			if ( wpfbogp_find_images() !== false && is_singular() ) { // Use our function to find post/page images
 				$wpfbogp_images = array_merge( $wpfbogp_images, wpfbogp_find_images() ); // Returns an array already, so merge into existing
 			}
 		}
+    
+   
 		
 		// Add the fallback image to the images array (which is empty if it's being forced)
 		if ( isset( $options['wpfbogp_fallback_img'] ) && $options['wpfbogp_fallback_img'] != '') {
 			if ( is_array( $wpfbogp_images ) )
-			{
-				$wpfbogp_images[] = $options['wpfbogp_fallback_img']; // Add to images array
+			{				
 				$wpfbogp_images = array_reverse($wpfbogp_images);
+        $wpfbogp_images[] = $options['wpfbogp_fallback_img']; // Add to images array
 			}
 			else {
 				$wpfbogp_images = array( $options['wpfbogp_fallback_img'] ); // Create image array with default image as index 0
 			}
 		}
+    
 		
 		// Make sure there were images passed as an array and loop through/output each
 		if ( ! empty( $wpfbogp_images ) && is_array( $wpfbogp_images ) ) {
@@ -294,6 +305,10 @@ function wpfbogp_buildpage() {
 				<th scope="row"><?php _e('Force Fallback Image as Default') ?></th>
 				<td><input type="checkbox" name="wpfbogp[wpfbogp_force_fallback]" value="1" <?php if ($options['wpfbogp_force_fallback'] == 1) echo 'checked="checked"'; ?>) /> <?php _e('Use this if you want to use the Default Image for everything instead of looking for featured/content images.') ?></label></td>
 			</tr>
+    <tr valign="top">
+				<th scope="row"><?php _e('Tell Facebook Graph to scrape page for images') ?></th>
+				<td><input type="checkbox" name="wpfbogp[wpfbogp_call_graph]" value="1" <?php if ($options['wpfbogp_call_graph'] == 1) echo 'checked="checked"'; ?>) /> <?php _e('Use this if you want the Facebook linter to scrape your page for featured image(s).') ?></label></td>
+			</tr>
 		</table>
 		
 		<input type="submit" class="button-primary" value="<?php _e('Save Changes') ?>" />
@@ -315,6 +330,7 @@ function wpfbogp_validate($input) {
 	$input['wpfbogp_app_id'] = wp_filter_nohtml_kses($input['wpfbogp_app_id']);
 	$input['wpfbogp_fallback_img'] = wp_filter_nohtml_kses($input['wpfbogp_fallback_img']);
 	$input['wpfbogp_force_fallback'] = ($input['wpfbogp_force_fallback'] == 1)  ? 1 : 0;
+  $input['wpfbogp_call_graph'] = ($input['wpfbogp_call_graph'] == 1)  ? 1 : 0;
 	return $input;
 }
 
@@ -356,3 +372,37 @@ if (function_exists('register_uninstall_hook')) {
 		delete_option('wpfbogp');
 	}
 }
+
+
+function wpfbogp_publish_post( $postId, $post ) {
+  $options = get_option('wpfbogp');
+  
+  if ($options['wpfbogp_call_graph'] == 0)
+    return;
+  
+  $postdata = http_build_query(
+    array(
+        'scrape' => 'true',
+        'id' => get_permalink($postId, false)
+      )
+  );  
+  
+  error_log("Posting data: " . $postdata . ".");
+
+  $opts = array('http' =>
+      array(
+          'method'  => 'POST',
+           'header'=> "Content-type: application/x-www-form-urlencoded\r\n"
+                . "Content-Length: " . strlen($postdata) . "\r\n",
+          'content' => $postdata
+      )
+  );
+
+  $context  = stream_context_create($opts);
+  $fp = fopen('https://graph.facebook.com', 'r', false, $context);
+  fpassthru($fp);
+  fclose($fp);
+}
+
+
+add_action( 'publish_post', 'wpfbogp_publish_post', 10, 2 );

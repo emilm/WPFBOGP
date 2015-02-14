@@ -1,4 +1,4 @@
-=== WP Facebook Open Graph protocol ===
+=== WP Facebook Open Graph protocol with Scrape Update ===
 Contributors: ryno267, andrewryno
 Donate link: http://goo.gl/8lGv3
 Tags: open graph, ogp, facebook open graph, google +1, +1, google plus one, plus one, linkedin share, facebook meta, open graph meta, facebook share, facebook like, linkedin
